@@ -67,6 +67,12 @@ class BasicCharacterController {
       loader.load("run.fbx", (anim) => {
         _OnLoad("run", anim);
       });
+      loader.load("runbackwards.fbx", (anim) => {
+        _OnLoad("runbackwards", anim);
+      });
+      loader.load("walkback.fbx", (anim) => {
+        _OnLoad("walkback", anim);
+      });
     });
   }
 
@@ -213,6 +219,7 @@ class FiniteStateMachine {
     this._states[name] = type;
   }
   SetState(name) {
+    console.log(`Changing state to: ${name}`);
     const prevState = this._currentState;
     if (prevState) {
       if (prevState.Name == name) return;
@@ -238,6 +245,8 @@ class CharacterFSM extends FiniteStateMachine {
     this._AddState("idle", IdleState);
     this._AddState("walk", WalkState);
     this._AddState("run", RunState);
+    this._AddState("runbackwards", RunBackwardsState);
+    this._AddState("walkback", WalkBackState);
   }
 }
 
@@ -275,8 +284,11 @@ class IdleState extends State {
   }
   Exit() {}
   Update(_, input) {
-    if (input._keys.forward || input._keys.backward) {
+    if (input._keys.forward) {
       this._parent.SetState("walk");
+    }
+    if (input._keys.backward) {
+      this._parent.SetState("walkback");
     }
   }
 }
@@ -311,7 +323,7 @@ class WalkState extends State {
   }
   Exit() {}
   Update(_, input) {
-    if (input._keys.forward || input._keys.backward) {
+    if (input._keys.forward) {
       if (input._keys.shift) {
         this._parent.SetState("run");
       }
@@ -351,13 +363,94 @@ class RunState extends State {
   }
   Exit() {}
   Update(_, input) {
-    if (input._keys.forward || input._keys.backward) {
+    if (input._keys.forward) {
       if (!input._keys.shift) {
         this._parent.SetState("walk");
       }
       return;
     }
     this._parent.SetState("idle");
+  }
+}
+class RunBackwardsState extends State {
+  constructor(parent) {
+    super(parent);
+  }
+  get Name() {
+    return "runbackwards";
+  }
+  Enter(prevState) {
+    console.log(`Entering state: ${this.Name}`);
+    const currAction = this._parent._proxy._animations["runbackwards"].action;
+    if (prevState) {
+      const prevAction = this._parent._proxy._animations[prevState.Name].action;
+      currAction.enabled = true;
+
+      if (prevState.Name == "walkback") {
+        const ratio = currAction.getClip().duration / prevAction.getClip().duration;
+        currAction.time = prevAction.time * ratio;
+      } else {
+        currAction.time = 0.0;
+        currAction.setEffectiveTimeScale(1.0);
+        currAction.setEffectiveWeight(1.0);
+      }
+      currAction.crossFadeFrom(prevAction, 0.5, true);
+      currAction.play();
+    } else {
+      currAction.play();
+    }
+  }
+  Exit() {}
+  Update(_, input) {
+    console.log(`Updating state: ${this.Name}`);
+    if (input._keys.backward) {
+      if (!input._keys.shift) {
+        this._parent.SetState("walkback");
+      }
+      return;
+    }
+    this._parent.SetState("idle");
+  }
+}
+class WalkBackState extends State {
+  constructor(parent) {
+    super(parent);
+  }
+  get Name() {
+    return "walkback";
+  }
+  Enter(prevState) {
+    console.log(`Entering state: ${this.Name}`);
+    const currAction = this._parent._proxy._animations["walkback"].action;
+    if (prevState) {
+      const prevAction = this._parent._proxy._animations[prevState.Name].action;
+      currAction.enabled = true;
+
+      if (prevState.Name == 'runbackwards') {
+        const ratio = currAction.getClip().duration / prevAction.getClip().duration;
+        currAction.time = prevAction.time * ratio;
+      } else {
+        currAction.time = 0.0;
+        currAction.setEffectiveTimeScale(1.0);
+        currAction.setEffectiveWeight(1.0);
+      }
+      currAction.crossFadeFrom(prevAction, 0.5, true);
+      currAction.play();
+    } else {
+      currAction.play();
+    }
+  }
+  Exit() {}
+  Update(_, input) {
+    console.log(`Updating state: ${this.Name}`);
+    if (input._keys.backward) {
+      if (input._keys.shift) {
+        this._parent.SetState('runbackwards');
+      }
+      return;
+    }
+
+    this._parent.SetState('idle');
   }
 }
 
