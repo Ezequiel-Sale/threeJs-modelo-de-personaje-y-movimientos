@@ -73,6 +73,9 @@ class BasicCharacterController {
       loader.load("walkback.fbx", (anim) => {
         _OnLoad("walkback", anim);
       });
+      loader.load("attack.fbx", (anim) => {
+        _OnLoad("attack", anim);
+      });
     });
   }
 
@@ -164,6 +167,7 @@ class BasicCharacterControllerInput {
       left: false,
       right: false,
       shift: false,
+      space: false,
     };
     document.addEventListener("keydown", (e) => this._onKeyDown(e), false);
     document.addEventListener("keyup", (e) => this._onKeyUp(e), false);
@@ -186,6 +190,10 @@ class BasicCharacterControllerInput {
       case 16: // Shift
         this._keys.shift = true;
         break;
+      case 32: // SPACE
+        if (!this._keys.space)
+          this._keys.space = true;
+        break;
     }
   }
   _onKeyUp(e) {
@@ -204,6 +212,9 @@ class BasicCharacterControllerInput {
         break;
       case 16: // Shift
         this._keys.shift = false;
+        break;
+      case 32: // SPACE
+        this._keys.space = false;
         break;
     }
   }
@@ -247,6 +258,7 @@ class CharacterFSM extends FiniteStateMachine {
     this._AddState("run", RunState);
     this._AddState("runbackwards", RunBackwardsState);
     this._AddState("walkback", WalkBackState);
+    this._AddState("attack", AttackState);
   }
 }
 
@@ -289,6 +301,9 @@ class IdleState extends State {
     }
     if (input._keys.backward) {
       this._parent.SetState("walkback");
+    }
+    if (input._keys.space) {
+      this._parent.SetState("attack");
     }
   }
 }
@@ -387,7 +402,8 @@ class RunBackwardsState extends State {
       currAction.enabled = true;
 
       if (prevState.Name == "walkback") {
-        const ratio = currAction.getClip().duration / prevAction.getClip().duration;
+        const ratio =
+          currAction.getClip().duration / prevAction.getClip().duration;
         currAction.time = prevAction.time * ratio;
       } else {
         currAction.time = 0.0;
@@ -426,8 +442,9 @@ class WalkBackState extends State {
       const prevAction = this._parent._proxy._animations[prevState.Name].action;
       currAction.enabled = true;
 
-      if (prevState.Name == 'runbackwards') {
-        const ratio = currAction.getClip().duration / prevAction.getClip().duration;
+      if (prevState.Name == "runbackwards") {
+        const ratio =
+          currAction.getClip().duration / prevAction.getClip().duration;
         currAction.time = prevAction.time * ratio;
       } else {
         currAction.time = 0.0;
@@ -445,15 +462,77 @@ class WalkBackState extends State {
     console.log(`Updating state: ${this.Name}`);
     if (input._keys.backward) {
       if (input._keys.shift) {
-        this._parent.SetState('runbackwards');
+        this._parent.SetState("runbackwards");
       }
       return;
     }
 
-    this._parent.SetState('idle');
+    this._parent.SetState("idle");
   }
 }
 
+class AttackState extends State {
+  constructor(parent) {
+    super(parent);
+    this._finishedCallback = null; // Guarda la referencia al callback
+  }
+
+  get Name() {
+    return "attack";
+  }
+
+  Enter(prevState) {
+    console.log(`Entering state: ${this.Name}`);
+    const currAction = this._parent._proxy._animations["attack"].action;
+
+    // Limpia cualquier evento previo para evitar duplicados
+    if (this._finishedCallback) {
+      currAction.getMixer().removeEventListener("finished", this._finishedCallback);
+    }
+
+    // Define el callback para el evento "finished"
+    this._finishedCallback = (e) => {
+      if (this._parent._currentState.Name === "attack") {
+        console.log("Jump attack finished, transitioning to idle");
+        this._parent.SetState("idle"); // Cambia al estado idle cuando termine
+      }
+    };
+
+    // Registra el evento "finished"
+    currAction.getMixer().addEventListener("finished", this._finishedCallback);
+
+    // Configura y reproduce la animación
+    currAction.enabled = true;
+    currAction.loop = THREE.LoopOnce; // Ejecuta la animación solo una vez
+    currAction.clampWhenFinished = true; // Detiene la animación al final
+    currAction.time = 0.0; // Reinicia la animación
+    currAction.reset(); // Asegúrate de reiniciar la animación
+    currAction.setEffectiveTimeScale(1.0);
+    currAction.setEffectiveWeight(1.0);
+
+    if (prevState) {
+      const prevAction = this._parent._proxy._animations[prevState.Name].action;
+      currAction.crossFadeFrom(prevAction, 0.5, true);
+    }
+
+    currAction.play();
+  }
+
+  Exit() {
+    const currAction = this._parent._proxy._animations["attack"].action;
+
+    // Elimina el evento "finished" para evitar duplicados
+    if (this._finishedCallback) {
+      currAction.getMixer().removeEventListener("finished", this._finishedCallback);
+      this._finishedCallback = null; // Limpia la referencia al callback
+    }
+  }
+
+  Update(_, input) {
+    console.log(`Updating state: ${this.Name}`);
+    // No permite transiciones adicionales mientras se ejecuta el ataque
+  }
+}
 // scene
 
 class DemoScene {
